@@ -11,6 +11,8 @@ import keyboard
 import os
 import logging
 
+from socks import method
+
 killswitch_activated = False
 
 
@@ -39,42 +41,42 @@ def search_and_click(images, threshold=0.8, click_delay=0.01, killswitch_key='q'
     killswitch_thread = threading.Thread(target=monitor_killswitch, args=(killswitch_key,))
     killswitch_thread.start()
 
+    while not killswitch_activated:
+        minimize_cmd_window()
 
-while not killswitch_activated:
-    minimize_cmd_window()
+        screenshot = pyautogui.screenshot()
+        screen_np = np.array(screenshot)
+        screen_gray = cv2.cvtColor(screen_np, cv2.COLOR_RGB2GRAY)
 
-    screenshot = pyautogui.screenshot()
-    screen_np = np.array(screenshot)
-    screen_gray = cv2.cvtColor(screen_np, cv2.COLOR_RGB2GRAY)
+        for image_path in images:
+            if not os.path.exists(image_path):
+                logging.error(f"Image not found at '{image_path}'")
+                continue  # Skip to the next image if the file doesn't exist
 
-    for image_path in images:
-        if not os.path.exists(image_path):
-            logging.error(f"Image not found at '{image_path}'")
-            continue  # Skip to the next image if the file doesn't exist
+            # Load the image from the database
+            template = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
 
-        # Load the image from the database
-        template = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            # Perform template matching
+            result = cv2.matchTemplate(screen_gray, template, method)
 
-        # Perform template matching
-        result = cv2.matchTemplate(screen_gray, template, method)
+            loc = np.where(result >= threshold)
 
-        loc = np.where(result >= threshold)
+            if loc[0].size > 0:
+                for pt in zip(*loc[::-1]):
+                    x, y = pt[0] + template.shape[1] // 2, pt[1] + template.shape[0] // 2
 
-        if loc[0].size > 0:
-            for pt in zip(*loc[::-1]):
-                x, y = pt[0] + template.shape[1] // 2, pt[1] + template.shape[0] // 2
+                    pyautogui.click(x, y)
+                    #                    logging.info(f"Clicked on {image_path} at ({x}, {y})")
+                    time.sleep(click_delay)  # Delay between clicks
 
-                pyautogui.click(x, y)
-                #                    logging.info(f"Clicked on {image_path} at ({x}, {y})")
-                time.sleep(click_delay)  # Delay between clicks
+                    if killswitch_activated:
+                        break
 
-                if killswitch_activated:
-                    break
+            if killswitch_activated:
+                break
 
-        if killswitch_activated:
-            break
+        break  # Run only once
 
-    break  # Run only once
 
 logging.info("Exiting the loop.")
 
